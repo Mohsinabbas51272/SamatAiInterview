@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: smart-interview-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: smartinterview
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: smart-interview-redis
+    restart: always
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smart-interview-backend
+    restart: always
+    ports:
+      - '3001:3001'
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - API_PREFIX=api/v1
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/smartinterview?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - JWT_EXPIRES_IN=15m
+      - JWT_REFRESH_SECRET=your-super-secret-refresh-key
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - UPLOAD_DEST=./uploads
+      - GEMINI_API_KEY=AIzaSyDsz6I8Ru0Z-XC53tehgjoyifMvXzL6_i8
+      - FRONTEND_URL=http://localhost:5173
+    depends_on:
+      - postgres
+      - redis
+
+volumes:
+  postgres_data:
+  redis_data:

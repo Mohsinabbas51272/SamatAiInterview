@@ -1,0 +1,517 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================
+// Enums
+// ========================
+
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+  HR
+  CANDIDATE
+}
+
+enum JobStatus {
+  ACTIVE
+  INACTIVE
+  CLOSED
+  DRAFT
+}
+
+enum ApplicationStatus {
+  PENDING
+  SCREENING
+  SHORTLISTED
+  INTERVIEW_SCHEDULED
+  INTERVIEW_COMPLETED
+  SELECTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum InterviewType {
+  AI_MOCK
+  TECHNICAL
+  HR_ROUND
+  FINAL
+}
+
+enum ResumeStatus {
+  UPLOADED
+  PARSING
+  PARSED
+  FAILED
+}
+
+enum QuestionCategory {
+  TECHNICAL
+  BEHAVIORAL
+  SITUATIONAL
+  COMMUNICATION
+  APTITUDE
+}
+
+enum QuestionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+// ========================
+// Old & Merged Models
+// ========================
+
+model User {
+  id                                       Int               @id @default(autoincrement())
+  email                                    String            @unique
+  password                                 String            // Old schema field
+  passwordHash                             String?           // New schema field (optional for compatibility)
+  name                                     String?
+  cnic                                     String?
+  address                                  String?
+  phone                                    String?
+  paymentMethod                            String?           @default("cash_on_shop")
+  role                                     Role              @default(USER)
+  otp                                      String?
+  otpExpiry                                DateTime?
+  createdAt                                DateTime          @default(now())
+  updatedAt                                DateTime          @updatedAt
+  isBlocked                                Boolean           @default(false)
+  isFrozen                                 Boolean           @default(false)
+  isVerified                               Boolean           @default(false)
+  image                                    String?
+
+  // Relations from old schema:
+  AuditLog                                 AuditLog[]
+  ChatMessage_ChatMessage_receiverIdToUser ChatMessage[]     @relation("ChatMessage_receiverIdToUser")
+  ChatMessage_ChatMessage_senderIdToUser   ChatMessage[]     @relation("ChatMessage_senderIdToUser")
+  Complaint                                Complaint[]
+  Dispute                                  Dispute[]
+  Order_Order_adminIdToUser                Order[]           @relation("Order_adminIdToUser")
+  Order_Order_userIdToUser                 Order[]           @relation("Order_userIdToUser")
+  PolicyAgreement                          PolicyAgreement[]
+  Review                                   Review[]
+
+  // New fields for JWT / Session management in the new backend:
+  isActive                                 Boolean           @default(true)
+  isEmailVerified                          Boolean           @default(false)
+  emailVerifyToken                         String?
+  passwordResetToken                       String?
+  passwordResetExpires                     DateTime?
+  lastLoginAt                              DateTime?
+
+  // Relations from new schema (Smart AI Interview Agent):
+  profile                                  Profile?
+  refreshTokens                            RefreshToken[]
+  jobs                                     Job[]
+  applications                             Application[]
+  interviews                               Interview[]       @relation("InterviewCandidate")
+  interviewsAsHR                           Interview[]       @relation("InterviewHR")
+  resume                                   Resume?
+  reports                                  Report[]
+  savedJobs                                SavedJob[]
+  notifications                            Notification[]
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  action    String
+  entity    String
+  entityId  Int
+  oldValue  String?
+  newValue  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  User      User?    @relation(fields: [userId], references: [id])
+
+  @@index([action])
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+model ChatMessage {
+  id                                Int      @id @default(autoincrement())
+  content                           String
+  senderId                          Int
+  receiverId                        Int
+  isRead                            Boolean  @default(false)
+  createdAt                         DateTime @default(now())
+  User_ChatMessage_receiverIdToUser User     @relation("ChatMessage_receiverIdToUser", fields: [receiverId], references: [id])
+  User_ChatMessage_senderIdToUser   User     @relation("ChatMessage_senderIdToUser", fields: [senderId], references: [id])
+
+  @@index([createdAt])
+  @@index([senderId, receiverId])
+}
+
+model Complaint {
+  id               Int       @id @default(autoincrement())
+  name             String
+  email            String
+  subject          String
+  message          String
+  status           String    @default("Pending")
+  createdAt        DateTime  @default(now())
+  adminRespondedAt DateTime?
+  adminResponse    String?
+  orderId          Int?
+  updatedAt        DateTime  @updatedAt
+  userId           Int?
+  Order            Order?    @relation(fields: [orderId], references: [id])
+  User             User?     @relation(fields: [userId], references: [id])
+}
+
+model Dispute {
+  id               Int       @id @default(autoincrement())
+  orderId          Int?
+  userId           Int
+  subject          String
+  message          String
+  evidence         String?
+  status           String    @default("Pending")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  adminRespondedAt DateTime?
+  adminResponse    String?
+  Order            Order?    @relation(fields: [orderId], references: [id])
+  User             User      @relation(fields: [userId], references: [id])
+}
+
+model Order {
+  id                       Int         @id @default(autoincrement())
+  items                    String
+  total                    Float
+  status                   String      @default("Pending")
+  customerName             String?
+  customerCnic             String?
+  customerAddress          String?
+  customerPhone            String?
+  paymentMethod            String?
+  paymentStatus            String      @default("Unpaid")
+  paymentDetails           String?
+  paymentReceipt           String?
+  userId                   Int?
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
+  adminDeleted             Boolean     @default(false)
+  adminFee                 Float       @default(0)
+  paymentConfirmedAt       DateTime?
+  shippingFee              Float       @default(1000)
+  userDeleted              Boolean     @default(false)
+  userFee                  Float       @default(0)
+  displayId                Int?
+  adminId                  Int?
+  isFinalReceiptSent       Boolean     @default(false)
+  Complaint                Complaint[]
+  Dispute                  Dispute[]
+  User_Order_adminIdToUser User?       @relation("Order_adminIdToUser", fields: [adminId], references: [id])
+  User_Order_userIdToUser  User?       @relation("Order_userIdToUser", fields: [userId], references: [id])
+  Settlement               Settlement?
+
+  @@index([adminId])
+  @@index([createdAt])
+  @@index([status])
+  @@index([userId])
+}
+
+model PolicyAgreement {
+  id       Int      @id @default(autoincrement())
+  userId   Int
+  version  String   @default("1.0")
+  agreedAt DateTime @default(now())
+  User     User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, version])
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  price       Float
+  image       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  category    String   @default("Gold")
+  weightMasha Float?   @default(0)
+  weightRati  Float?   @default(0)
+  weightTola  Float?   @default(0)
+  occasion    String?
+  Review      Review[]
+
+  @@index([category])
+  @@index([createdAt])
+  @@index([price])
+}
+
+model RateSettings {
+  id                  Int      @id @default(1)
+  goldAdjustment      Float    @default(0)
+  silverAdjustment    Float    @default(0)
+  updatedAt           DateTime @updatedAt
+  updatedBy           Int?
+  customGoldRate      Float    @default(0)
+  customSilverRate    Float    @default(0)
+  useCustomGoldRate   Boolean  @default(false)
+  useCustomSilverRate Boolean  @default(false)
+}
+
+model Review {
+  id         Int      @id @default(autoincrement())
+  rating     Int      @default(5)
+  comment    String?
+  images     String[]
+  isApproved Boolean  @default(false)
+  productId  Int
+  userId     Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  Product    Product  @relation(fields: [productId], references: [id])
+  User       User     @relation(fields: [userId], references: [id])
+}
+
+model Settlement {
+  id           Int       @id @default(autoincrement())
+  orderId      Int       @unique
+  productPrice Float
+  userFee      Float
+  adminFee     Float
+  adminPayment Float
+  status       String    @default("Pending")
+  settledAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  Order        Order     @relation(fields: [orderId], references: [id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model smartinterview {
+  id         BigInt   @id @default(autoincrement())
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+}
+
+// ========================
+// Smart AI Interview Agent Models (Numeric User Ref)
+// ========================
+
+model Profile {
+  id                String   @id @default(uuid())
+  userId            Int      @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName         String
+  lastName          String
+  phone             String?
+  location          String?
+  title             String?
+  bio               String?
+  skills            String[]
+  linkedinUrl       String?
+  githubUrl         String?
+  portfolioUrl      String?
+  yearsOfExperience Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Job {
+  id            String      @id @default(uuid())
+  title         String
+  department    String
+  location      String
+  type          String
+  status        JobStatus   @default(DRAFT)
+  description   String
+  requirements  String[]
+  skills        String[]
+  experienceMin Int?
+  experienceMax Int?
+  salaryMin     Float?
+  salaryMax     Float?
+  currency      String?     @default("USD")
+  closingDate   DateTime?
+  createdById   Int
+  createdBy     User        @relation(fields: [createdById], references: [id])
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  applications  Application[]
+  interviews    Interview[]
+  savedByCandidates SavedJob[]
+}
+
+model Application {
+  id           String            @id @default(uuid())
+  jobId        String
+  job          Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId  Int
+  candidate    User              @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  coverLetter  String?
+  matchScore   Float?
+  status       ApplicationStatus @default(PENDING)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([jobId, candidateId])
+}
+
+model Resume {
+  id               String       @id @default(uuid())
+  userId           Int          @unique
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  originalFileName String
+  storagePath      String
+  fileSize         Int
+  mimeType         String
+  status           ResumeStatus @default(PARSING)
+  parsedData       Json?
+  matchScore       Float?
+  extractedSkills  String[]
+  extractedExp     Json?
+  aiAnalysis       String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+model Interview {
+  id                 String          @id @default(uuid())
+  jobId              String
+  job                Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId        Int
+  candidate          User            @relation("InterviewCandidate", fields: [candidateId], references: [id], onDelete: Cascade)
+  hrId               Int?
+  hr                 User?           @relation("InterviewHR", fields: [hrId], references: [id])
+  type               InterviewType   @default(AI_MOCK)
+  status             InterviewStatus @default(SCHEDULED)
+  scheduledAt        DateTime
+  duration           Int             @default(60)
+  meetingLink        String?
+  notes              String?
+  overallScore       Float?
+  technicalScore     Float?
+  communicationScore Float?
+  confidenceScore    Float?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  answers            InterviewAnswer[]
+  report             Report?
+}
+
+model Question {
+  id             String             @id @default(uuid())
+  text           String
+  category       QuestionCategory
+  difficulty     QuestionDifficulty
+  expectedAnswer String?
+  timeLimit      Int                @default(120)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  answers        InterviewAnswer[]
+}
+
+model InterviewAnswer {
+  id           String    @id @default(uuid())
+  interviewId  String
+  interview    Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  questionId   String
+  question     Question  @relation(fields: [questionId], references: [id])
+  answerText   String
+  audioUrl     String?
+  videoUrl     String?
+  score        Float?
+  aiScore      Float?
+  aiFeedback   String?
+  timeTaken    Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Report {
+  id                 String   @id @default(uuid())
+  interviewId        String   @unique
+  interview          Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  candidateId        Int
+  candidate          User     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  resumeScore        Float?
+  interviewScore     Float?
+  confidenceScore    Float?
+  communicationScore Float?
+  technicalScore     Float?
+  overallScore       Float?
+  strengths          String[]
+  weaknesses         String[]
+  recommendation     String?
+  nlpAnalysis        String?
+  generatedAt        DateTime @default(now())
+}
+
+// ========================
+// New SaaS Extension Models
+// ========================
+
+model SavedJob {
+  id          String   @id @default(uuid())
+  candidateId Int
+  candidate   User     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId       String
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([candidateId, jobId])
+}
+
+model PromptTemplate {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  category    QuestionCategory
+  template    String
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model SystemConfig {
+  id              String   @id @default("default")
+  model           String   @default("gemini-2.0-flash")
+  temperature     Float    @default(0.7)
+  screeningWeight Int      @default(40)
+  interviewWeight Int      @default(60)
+  systemPrompt    String   @default("You are Aria, an AI technical interviewer. Ask candidates technical questions and evaluate their responses constructively.")
+  updatedAt       DateTime @updatedAt
+}
