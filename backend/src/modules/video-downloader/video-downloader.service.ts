@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 const execFileAsync = promisify(execFile);
 
 // Resolve yt-dlp binary path: prefer system binary, fall back to static
-function resolveYtDlpPath(): string {
+function resolveYtDlpPath(): string | null {
   // On development/local: try system yt-dlp first
   if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
     const systemBinary = '/usr/local/bin/yt-dlp';
@@ -23,11 +23,12 @@ function resolveYtDlpPath(): string {
     }
   }
 
-  // On serverless or if system binary not found: use npm package (yt-dlp-static)
+  // On serverless: try to use npm package (yt-dlp-static)
   try {
     return require('yt-dlp-static');
   } catch (e) {
-    throw new Error('yt-dlp not found. Install locally: brew install yt-dlp or npm install yt-dlp-static');
+    // yt-dlp-static not available or unsupported platform
+    return null;
   }
 }
 
@@ -51,13 +52,24 @@ interface DownloadJob {
 @Injectable()
 export class VideoDownloaderService {
   private readonly logger = new Logger(VideoDownloaderService.name);
-  private readonly downloadDir: string;
+  private readonly downloadDir: string | null;
   private readonly jobs = new Map<string, DownloadJob>();
   private readonly queueData = new Map<string, { dto: StartDownloadDto; cleanUrl: string }>();
   private readonly activeProcesses = new Map<string, any>();
   private concurrencyLimit = 2;
+  private readonly isEnabled: boolean;
 
   constructor() {
+    // Check if yt-dlp is available
+    if (!ytdlpPath) {
+      this.logger.warn('VideoDownloaderService disabled: yt-dlp not available on this platform');
+      this.downloadDir = null;
+      this.isEnabled = false;
+      return;
+    }
+
+    this.isEnabled = true;
+
     // Use a writable temp folder on serverless environments (Vercel, AWS Lambda, etc.).
     const isServerless = Boolean(
       process.env.VERCEL ||
@@ -97,6 +109,7 @@ export class VideoDownloaderService {
       this.loadExistingDownloads();
     } else {
       this.logger.warn('VideoDownloaderService disabled because no writable download directory could be created');
+      this.isEnabled = false;
     }
   }
 
@@ -161,6 +174,14 @@ export class VideoDownloaderService {
    * Fetch video/playlist metadata using yt-dlp --dump-json
    */
   async fetchInfo(dto: FetchInfoDto) {
+    if (!this.isEnabled || !ytdlpPath) {
+      throw new BadRequestException(
+        'Video downloader is not available on this platform. ' +
+        'This feature requires yt-dlp which is not supported on serverless environments. ' +
+        'Please use the web version or contact support.'
+      );
+    }
+
     const { cleanUrl, isPlaylist: urlHasPlaylist } = this.cleanUrl(dto.url);
     
     try {
@@ -282,6 +303,13 @@ export class VideoDownloaderService {
    * Start downloading a video using yt-dlp
    */
   async startDownload(dto: StartDownloadDto) {
+    if (!this.isEnabled || !ytdlpPath) {
+      throw new BadRequestException(
+        'Video downloader is not available on this platform. ' +
+        'This feature requires yt-dlp which is not supported on serverless environments.'
+      );
+    }
+
     if (!this.downloadDir || !fs.existsSync(this.downloadDir)) {
       throw new BadRequestException('Download storage is unavailable. Please try again later.');
     }
@@ -316,6 +344,11 @@ export class VideoDownloaderService {
    * Execute the actual download in the background
    */
   private async runDownload(job: DownloadJob, dto: StartDownloadDto, cleanUrl: string) {
+    // Type guard: ensure ytdlpPath and downloadDir are not null at this point
+    if (!ytdlpPath || !this.downloadDir) {
+      throw new Error('Video downloader is not available');
+    }
+
     job.status = 'downloading';
 
     const outputTemplate = path.join(this.downloadDir, `%(title).80s_${job.quality}p.%(ext)s`);
@@ -348,7 +381,7 @@ export class VideoDownloaderService {
     this.logger.log(`Starting download: yt-dlp ${args.join(' ')}`);
 
     return new Promise<void>((resolve, reject) => {
-      const proc = spawn(ytdlpPath, args);
+      const proc = spawn(ytdlpPath as string, args);
       this.activeProcesses.set(job.id, proc);
       let stderrOutput = '';
 
@@ -439,24 +472,26 @@ export class VideoDownloaderService {
             job.title = job.filename.replace(/\.[^/.]+$/, '');
           } else {
             // Search for the file in downloads directory
-            const files = fs.readdirSync(this.downloadDir)
-              .filter(f => {
-                const ext = path.extname(f).toLowerCase();
-                return ['.mp4', '.mkv', '.webm', '.mp3', '.m4a'].includes(ext);
-              })
-              .map(f => ({
-                name: f,
-                path: path.join(this.downloadDir, f),
-                time: fs.statSync(path.join(this.downloadDir, f)).mtimeMs,
-              }))
-              .sort((a, b) => b.time - a.time);
+            if (this.downloadDir) {
+              const files = fs.readdirSync(this.downloadDir)
+                .filter(f => {
+                  const ext = path.extname(f).toLowerCase();
+                  return ['.mp4', '.mkv', '.webm', '.mp3', '.m4a'].includes(ext);
+                })
+                .map(f => ({
+                  name: f,
+                  path: path.join(this.downloadDir as string, f),
+                  time: fs.statSync(path.join(this.downloadDir as string, f)).mtimeMs,
+                }))
+                .sort((a, b) => b.time - a.time);
 
-            if (files.length > 0) {
-              const latest = files[0];
-              job.filePath = latest.path;
-              job.filename = latest.name;
-              job.fileSize = fs.statSync(latest.path).size;
-              job.title = latest.name.replace(/\.[^/.]+$/, '');
+              if (files.length > 0) {
+                const latest = files[0];
+                job.filePath = latest.path;
+                job.filename = latest.name;
+                job.fileSize = fs.statSync(latest.path).size;
+                job.title = latest.name.replace(/\.[^/.]+$/, '');
+              }
             }
           }
 
