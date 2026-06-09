@@ -5,6 +5,7 @@ import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import ytdlpPath from 'yt-dlp-static';
 import { v4 as uuidv4 } from 'uuid';
 
 const execFileAsync = promisify(execFile);
@@ -113,7 +114,7 @@ export class VideoDownloaderService {
       // Always try single video first - it's faster and more reliable
       this.logger.log(`Fetching info for: ${cleanUrl}`);
       
-      const { stdout: fullJson } = await execFileAsync('yt-dlp', [
+      const { stdout: fullJson } = await execFileAsync(ytdlpPath, [
         '--dump-json',
         '--no-playlist',
         '--no-warnings',
@@ -164,7 +165,7 @@ export class VideoDownloaderService {
       // If the URL had a real playlist (not radio), also try to fetch playlist info
       if (urlHasPlaylist) {
         try {
-          const { stdout: plJson } = await execFileAsync('yt-dlp', [
+          const { stdout: plJson } = await execFileAsync(ytdlpPath, [
             '--flat-playlist',
             '--dump-single-json',
             '--no-warnings',
@@ -203,7 +204,7 @@ export class VideoDownloaderService {
       if (error.message?.includes('timeout')) {
         message = 'Request timed out. The video might be restricted or the URL is invalid.';
       } else if (error.message?.includes('not found') || error.message?.includes('ENOENT')) {
-        message = 'yt-dlp is not installed. Run: brew install yt-dlp';
+        message = 'yt-dlp is not installed. Install with npm install yt-dlp-static or brew install yt-dlp';
       } else if (error.stderr) {
         message = `yt-dlp error: ${error.stderr.substring(0, 200)}`;
       } else {
@@ -280,7 +281,7 @@ export class VideoDownloaderService {
     this.logger.log(`Starting download: yt-dlp ${args.join(' ')}`);
 
     return new Promise<void>((resolve, reject) => {
-      const proc = spawn('yt-dlp', args);
+      const proc = spawn(ytdlpPath, args);
       this.activeProcesses.set(job.id, proc);
       let stderrOutput = '';
 
