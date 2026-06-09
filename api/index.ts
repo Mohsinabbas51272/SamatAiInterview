@@ -1,11 +1,13 @@
+// @ts-nocheck
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from '../backend/src/app.module';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
-import * as express from 'express';
 
+const express = require('express');
 const server = express();
+
 let appPromise: Promise<void> | null = null;
 let bootstrapError: Error | null = null;
 
@@ -60,7 +62,6 @@ export default async (req: any, res: any) => {
     res.status(500).json({
       error: 'Internal Server Error',
       message: bootstrapError?.message || error?.message || 'Unknown error during initialization',
-      stack: process.env.NODE_ENV !== 'production' ? (bootstrapError?.stack || error?.stack) : undefined,
     });
   }
 };

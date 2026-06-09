@@ -21,7 +21,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 // Helper to ensure upload destination directory exists
-const uploadDir = './uploads';
+// Vercel serverless has read-only filesystem, only /tmp is writable
+const uploadDir = process.env.VERCEL ? '/tmp/uploads' : './uploads';
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
