@@ -1,10 +1,5 @@
 {
   "version": 2,
-  "functions": {
-    "api/index.ts": {
-      "includeFiles": "backend/prisma/schema.prisma"
-    }
-  },
   "rewrites": [
     {
       "source": "/api/:path*",
