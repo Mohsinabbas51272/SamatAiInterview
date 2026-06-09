@@ -22,8 +22,17 @@ async function bootstrap() {
   app.setGlobalPrefix(apiPrefix);
 
   // CORS
+  const frontendUrl = configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
+  const allowedOrigins = frontendUrl.split(',').map((o) => o.trim());
+  if (!allowedOrigins.includes('http://localhost:5173')) {
+    allowedOrigins.push('http://localhost:5173');
+  }
+  if (!allowedOrigins.includes('http://localhost:3000')) {
+    allowedOrigins.push('http://localhost:3000');
+  }
+
   app.enableCors({
-    origin: configService.get<string>('FRONTEND_URL', 'http://localhost:5173'),
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

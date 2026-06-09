@@ -11,7 +11,7 @@
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
     "build:frontend": "npm run build --workspace=frontend",
     "build:backend": "npm run build --workspace=backend",
-    "build": "npx prisma generate --schema=backend/prisma/schema.prisma && npm run build:frontend && rm -rf dist && mv frontend/dist ./dist",
+    "build": "npm run prisma:generate --workspace=backend && npm run build:frontend && rm -rf dist && mv frontend/dist ./dist",
     "install:all": "npm install"
   },
   "devDependencies": {

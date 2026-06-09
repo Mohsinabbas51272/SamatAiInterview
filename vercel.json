@@ -1,5 +1,14 @@
 {
   "version": 2,
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": [
+        "backend/prisma/schema.prisma",
+        "node_modules/.prisma/client/schema.prisma",
+        "node_modules/.prisma/client/query-engine-*"
+      ]
+    }
+  },
   "rewrites": [
     {
       "source": "/api/:path*",

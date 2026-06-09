@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from '../backend/src/app.module';
 import { ExpressAdapter } from '@nestjs/platform-express';
+import { ConfigService } from '@nestjs/config';
 import * as express from 'express';
 
 const server = express();
@@ -13,9 +14,12 @@ async function bootstrap() {
   // Match the global prefix configured in the NestJS application
   app.setGlobalPrefix('api/v1');
   
+  const configService = app.get(ConfigService);
+  const frontendUrl = configService.get<string>('FRONTEND_URL', '*');
+
   // CORS configuration
   app.enableCors({
-    origin: '*',
+    origin: frontendUrl === '*' ? true : frontendUrl.split(',').map(o => o.trim()),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
