@@ -4,6 +4,7 @@ import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 
 const execFileAsync = promisify(execFile);
@@ -27,9 +28,12 @@ export class VideoDownloaderService {
   private readonly logger = new Logger(VideoDownloaderService.name);
   private readonly downloadDir: string;
   private readonly jobs = new Map<string, DownloadJob>();
+  private readonly queueData = new Map<string, { dto: StartDownloadDto; cleanUrl: string }>();
+  private readonly activeProcesses = new Map<string, any>();
+  private concurrencyLimit = 2;
 
   constructor() {
-    this.downloadDir = path.join(process.cwd(), 'downloads');
+    this.downloadDir = path.join(os.homedir(), 'Downloads', 'VideoDownloader');
     if (!fs.existsSync(this.downloadDir)) {
       fs.mkdirSync(this.downloadDir, { recursive: true });
     }
@@ -218,20 +222,17 @@ export class VideoDownloaderService {
       filename: '',
       filePath: '',
       fileSize: 0,
-      title: 'Starting download...',
+      title: 'Queued...',
       createdAt: new Date(),
     };
 
     this.jobs.set(jobId, job);
+    this.queueData.set(jobId, { dto, cleanUrl });
 
-    // Start async download
-    this.runDownload(job, dto, cleanUrl).catch(err => {
-      this.logger.error(`Download ${jobId} failed`, err.message);
-      job.status = 'failed';
-      job.error = err.message || 'Download failed';
-    });
+    // Trigger queue worker
+    this.processQueue();
 
-    return { jobId, status: 'pending', message: 'Download started' };
+    return { jobId, status: 'pending', message: 'Download queued' };
   }
 
   /**
@@ -271,6 +272,7 @@ export class VideoDownloaderService {
 
     return new Promise<void>((resolve, reject) => {
       const proc = spawn('yt-dlp', args);
+      this.activeProcesses.set(job.id, proc);
       let stderrOutput = '';
 
       proc.stdout.on('data', (data: Buffer) => {
@@ -339,6 +341,7 @@ export class VideoDownloaderService {
       });
 
       proc.on('close', (code) => {
+        this.activeProcesses.delete(job.id);
         if (code === 0) {
           job.status = 'completed';
           job.progress = 100;
@@ -392,6 +395,7 @@ export class VideoDownloaderService {
       });
 
       proc.on('error', (err) => {
+        this.activeProcesses.delete(job.id);
         job.status = 'failed';
         job.error = `Failed to start yt-dlp: ${err.message}. Make sure yt-dlp is installed (brew install yt-dlp).`;
         reject(err);
@@ -469,11 +473,113 @@ export class VideoDownloaderService {
     if (!job) {
       throw new NotFoundException('Download job not found');
     }
+    // Kill running process if active
+    const proc = this.activeProcesses.get(jobId);
+    if (proc) {
+      try {
+        proc.kill('SIGINT');
+      } catch (err) {
+        this.logger.warn(`Failed to kill process for job ${jobId}`, err);
+      }
+      this.activeProcesses.delete(jobId);
+    }
     // Clean up file
     if (job.filePath && fs.existsSync(job.filePath)) {
-      fs.unlinkSync(job.filePath);
+      try {
+        fs.unlinkSync(job.filePath);
+      } catch {}
     }
     this.jobs.delete(jobId);
+    this.queueData.delete(jobId);
+    this.processQueue();
     return { message: 'Job deleted successfully' };
+  }
+
+  /**
+   * Clear all download history, files, and terminate active download processes
+   */
+  clearAllHistory() {
+    // Kill running processes
+    for (const [jobId, proc] of this.activeProcesses.entries()) {
+      try {
+        proc.kill('SIGINT');
+      } catch (err) {
+        this.logger.warn(`Failed to kill process for job ${jobId}`, err);
+      }
+    }
+    this.activeProcesses.clear();
+
+    // Delete files
+    for (const job of this.jobs.values()) {
+      if (job.filePath && fs.existsSync(job.filePath)) {
+        try {
+          fs.unlinkSync(job.filePath);
+        } catch (err) {
+          this.logger.warn(`Failed to delete file: ${job.filePath}`, err);
+        }
+      }
+    }
+
+    this.jobs.clear();
+    this.queueData.clear();
+    this.logger.log('All download history and files cleared');
+    return { success: true, message: 'All history and files cleared successfully' };
+  }
+
+  /**
+   * Process the download queue based on concurrency limit
+   */
+  private processQueue() {
+    // Count active downloading or merging jobs
+    const activeJobs = Array.from(this.jobs.values()).filter(
+      j => j.status === 'downloading' || j.status === 'merging'
+    );
+
+    if (activeJobs.length >= this.concurrencyLimit) {
+      return;
+    }
+
+    // Find pending jobs sorted by oldest first
+    const pendingJobs = Array.from(this.jobs.values())
+      .filter(j => j.status === 'pending')
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+    const slotsAvailable = this.concurrencyLimit - activeJobs.length;
+    const nextJobs = pendingJobs.slice(0, slotsAvailable);
+
+    for (const job of nextJobs) {
+      const data = this.queueData.get(job.id);
+      if (data) {
+        job.status = 'downloading';
+        job.title = 'Starting download...';
+        this.runDownload(job, data.dto, data.cleanUrl)
+          .catch(err => {
+            this.logger.error(`Download job ${job.id} failed`, err.message);
+            job.status = 'failed';
+            job.error = err.message || 'Download failed';
+          })
+          .finally(() => {
+            this.queueData.delete(job.id);
+            this.processQueue();
+          });
+      }
+    }
+  }
+
+  /**
+   * Set dynamic download concurrency limit
+   */
+  setConcurrencyLimit(limit: number) {
+    this.concurrencyLimit = limit;
+    this.logger.log(`Updated download concurrency limit to: ${limit}`);
+    this.processQueue();
+    return { success: true, limit: this.concurrencyLimit };
+  }
+
+  /**
+   * Get download concurrency limit
+   */
+  getConcurrencyLimit() {
+    return { limit: this.concurrencyLimit };
   }
 }

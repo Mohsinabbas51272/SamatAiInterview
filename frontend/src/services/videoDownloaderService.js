@@ -1,4 +1,4 @@
-import api from './api';
+import api, { API_BASE_URL } from './api';
 
 /**
  * Helper to extract data from NestJS TransformInterceptor wrapper
@@ -12,8 +12,6 @@ const extractData = (response) => {
   }
   return d;
 };
-
-const API_BASE = 'http://localhost:3001/api/v1';
 
 const videoDownloaderService = {
   /**
@@ -56,7 +54,7 @@ const videoDownloaderService = {
    * @param {string} jobId
    */
   getFileUrl(jobId) {
-    return `${API_BASE}/video-downloader/file/${jobId}`;
+    return `${API_BASE_URL}/video-downloader/file/${jobId}`;
   },
 
   /**
@@ -65,6 +63,30 @@ const videoDownloaderService = {
    */
   async deleteJob(jobId) {
     const response = await api.delete(`/video-downloader/${jobId}`);
+    return extractData(response);
+  },
+
+  /**
+   * Get download concurrency limit
+   */
+  async getConcurrencyLimit() {
+    const response = await api.get('/video-downloader/concurrency');
+    return extractData(response);
+  },
+
+  /**
+   * Set download concurrency limit
+   */
+  async setConcurrencyLimit(limit) {
+    const response = await api.post('/video-downloader/concurrency', { limit });
+    return extractData(response);
+  },
+
+  /**
+   * Clear all download jobs and file history
+   */
+  async clearAllHistory() {
+    const response = await api.delete('/video-downloader/history/clear');
     return extractData(response);
   },
 };

@@ -43,11 +43,13 @@ export default function VideoDownloader() {
   const [downloadingIds, setDownloadingIds] = useState(new Set());
   const [selectedPlaylistItems, setSelectedPlaylistItems] = useState(new Set());
   const [activeTab, setActiveTab] = useState('download'); // download | history
+  const [concurrencyLimit, setConcurrencyLimit] = useState(2);
   const pollTimers = useRef({});
 
-  // Load existing downloads on mount
+  // Load existing downloads and concurrency configuration on mount
   useEffect(() => {
     loadDownloadHistory();
+    loadConcurrencyLimit();
     return () => {
       Object.values(pollTimers.current).forEach(clearInterval);
     };
@@ -61,6 +63,27 @@ export default function VideoDownloader() {
       }
     } catch (err) {
       console.log('No existing downloads yet');
+    }
+  };
+
+  const loadConcurrencyLimit = async () => {
+    try {
+      const config = await videoDownloaderService.getConcurrencyLimit();
+      if (config && typeof config.limit === 'number') {
+        setConcurrencyLimit(config.limit);
+      }
+    } catch (err) {
+      console.log('Failed to load concurrency limit');
+    }
+  };
+
+  const handleConcurrencyChange = async (e) => {
+    const val = parseInt(e.target.value, 10);
+    setConcurrencyLimit(val);
+    try {
+      await videoDownloaderService.setConcurrencyLimit(val);
+    } catch (err) {
+      console.error('Failed to save concurrency limit', err);
     }
   };
 
@@ -234,10 +257,38 @@ export default function VideoDownloader() {
     const a = document.createElement('a');
     a.href = fileUrl;
     a.download = filename || 'video.mp4';
-    a.target = '_blank';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  };
+
+  // Save all completed downloads to the user's machine at once
+  const handleSaveAllCompleted = () => {
+    const completed = downloads.filter(d => d.status === 'completed');
+    if (completed.length === 0) return;
+    
+    completed.forEach((dl, index) => {
+      setTimeout(() => {
+        handleSaveFile(dl.id, dl.filename);
+      }, index * 800); // 800ms spacing to prevent browser blockages
+    });
+  };
+
+  // Clear all download history and files
+  const handleClearAllHistory = async () => {
+    if (!window.confirm('Are you sure you want to delete all download history and files? This cannot be undone.')) return;
+    try {
+      await videoDownloaderService.clearAllHistory();
+      setDownloads([]);
+      // Cancel active polling timers
+      Object.keys(pollTimers.current).forEach(jobId => {
+        clearInterval(pollTimers.current[jobId]);
+        delete pollTimers.current[jobId];
+      });
+      setDownloadingIds(new Set());
+    } catch (err) {
+      console.error('Failed to clear history', err);
+    }
   };
 
   // Playlist selection helpers
@@ -324,21 +375,55 @@ export default function VideoDownloader() {
           </button>
         </div>
 
-        {/* Quality Selector */}
-        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginRight: 4 }}>Quality:</span>
-          {QUALITY_OPTIONS.map((q) => (
-            <button
-              key={q.value}
-              onClick={() => setQuality(q.value)}
-              className={`vd-pill ${quality === q.value ? 'active' : ''}`}
-              style={quality === q.value ? { borderColor: q.color, background: q.color + '18', color: q.color } : {}}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', borderTop: '1px solid var(--vd-border)', paddingTop: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          {/* Quality Selector */}
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginRight: 4 }}>Quality:</span>
+            {QUALITY_OPTIONS.map((q) => (
+              <button
+                key={q.value}
+                onClick={() => setQuality(q.value)}
+                className={`vd-pill ${quality === q.value ? 'active' : ''}`}
+                style={quality === q.value ? { borderColor: q.color, background: q.color + '18', color: q.color } : {}}
+              >
+                <MonitorPlay style={{ width: 13, height: 13 }} />
+                <span>{q.label}</span>
+                <span style={{ fontSize: '0.62rem', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{q.tag}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Concurrency Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b' }}>Simultaneous Downloads:</span>
+            <select
+              value={concurrencyLimit}
+              onChange={handleConcurrencyChange}
+              className="vd-select"
+              style={{
+                padding: '0.35rem 1.75rem 0.35rem 0.65rem',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                borderRadius: '0.5rem',
+                border: '2px solid var(--vd-border)',
+                background: 'var(--vd-input-bg)',
+                color: 'var(--vd-text)',
+                cursor: 'pointer',
+                outline: 'none',
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2364748b\' stroke-width=\'3\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpolyline points=\'6 9 12 15 18 9\'%3E%3C/polyline%3E%3C/svg%3E")',
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 0.5rem center',
+                backgroundSize: '0.8em',
+              }}
             >
-              <MonitorPlay style={{ width: 13, height: 13 }} />
-              <span>{q.label}</span>
-              <span style={{ fontSize: '0.62rem', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{q.tag}</span>
-            </button>
-          ))}
+              <option value="1">1 (One by One)</option>
+              <option value="2">2 (Balanced)</option>
+              <option value="3">3 (Fast)</option>
+              <option value="5">5 (Turbo)</option>
+            </select>
+          </div>
         </div>
       </motion.div>
 
@@ -493,7 +578,46 @@ export default function VideoDownloader() {
               Active ({activeDownloads.length})
             </button>
           )}
-          <button onClick={loadDownloadHistory} className="vd-btn-sm" style={{ marginLeft: 'auto' }}>
+          {completedDownloads.length > 0 && (
+            <button
+              onClick={handleSaveAllCompleted}
+              className="vd-btn-download"
+              style={{
+                marginLeft: 'auto',
+                fontSize: '0.75rem',
+                padding: '0.35rem 0.85rem',
+                background: 'linear-gradient(135deg, #10b981, #059669)',
+                border: 'none',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+              title="Save all completed videos to your local Downloads folder at once"
+            >
+              <Download style={{ width: 14, height: 14 }} />
+              <span>Save All Completed ({completedDownloads.length})</span>
+            </button>
+          )}
+          <button
+            onClick={handleClearAllHistory}
+            className="vd-btn-sm"
+            style={{
+              borderColor: '#fca5a5',
+              color: '#dc2626',
+              background: 'rgba(220,38,38,0.05)',
+              marginLeft: completedDownloads.length > 0 ? '0.4rem' : 'auto',
+            }}
+            title="Delete all download history and files"
+          >
+            <Trash2 style={{ width: 14, height: 14 }} />
+            <span>Clear History</span>
+          </button>
+          <button 
+            onClick={loadDownloadHistory} 
+            className="vd-btn-sm" 
+            style={{ marginLeft: '0.4rem' }}
+          >
             <RefreshCw style={{ width: 14, height: 14 }} /> Refresh
           </button>
         </div>

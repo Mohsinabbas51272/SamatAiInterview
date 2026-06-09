@@ -34,6 +34,18 @@ export class VideoDownloaderController {
     return this.service.listJobs();
   }
 
+  @ApiOperation({ summary: 'Get download concurrency limit' })
+  @Get('concurrency')
+  getConcurrencyLimit() {
+    return this.service.getConcurrencyLimit();
+  }
+
+  @ApiOperation({ summary: 'Set download concurrency limit' })
+  @Post('concurrency')
+  setConcurrencyLimit(@Body() body: { limit: number }) {
+    return this.service.setConcurrencyLimit(body.limit);
+  }
+
   @ApiOperation({ summary: 'Download the completed file' })
   @Get('file/:jobId')
   async getFile(@Param('jobId') jobId: string, @Res() res: Response) {
@@ -49,6 +61,12 @@ export class VideoDownloaderController {
 
     const stream = fs.createReadStream(filePath);
     stream.pipe(res);
+  }
+
+  @ApiOperation({ summary: 'Clear all download history and files' })
+  @Delete('history/clear')
+  clearAllHistory() {
+    return this.service.clearAllHistory();
   }
 
   @ApiOperation({ summary: 'Delete a download job and its file' })
