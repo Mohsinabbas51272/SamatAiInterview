@@ -34,20 +34,45 @@ export class VideoDownloaderService {
   private concurrencyLimit = 2;
 
   constructor() {
-    // Use /tmp on serverless environments (Vercel has read-only filesystem)
-    const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
-    this.downloadDir = isServerless
-      ? '/tmp/VideoDownloader'
+    // Use a writable temp folder on serverless environments (Vercel, AWS Lambda, etc.).
+    const isServerless = Boolean(
+      process.env.VERCEL ||
+      process.env.VERCEL_ENV ||
+      process.env.NOW_REGION ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.FUNCTIONS_WORKER_RUNTIME
+    );
+
+    const preferredDir = process.env.VIDEO_DOWNLOADER_DIR
+      ? path.resolve(process.env.VIDEO_DOWNLOADER_DIR)
+      : isServerless
+      ? path.join(os.tmpdir(), 'VideoDownloader')
       : path.join(os.homedir(), 'Downloads', 'VideoDownloader');
 
-    try {
-      if (!fs.existsSync(this.downloadDir)) {
-        fs.mkdirSync(this.downloadDir, { recursive: true });
+    const fallbackDir = path.join(os.tmpdir(), 'VideoDownloader');
+    this.downloadDir = preferredDir;
+
+    const ensureDirectory = (dir: string) => {
+      try {
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        return true;
+      } catch (err) {
+        this.logger.warn(`Could not create download directory: ${dir}`, err);
+        return false;
       }
-      // Load existing completed files on startup
+    };
+
+    if (!ensureDirectory(this.downloadDir) && this.downloadDir !== fallbackDir) {
+      this.downloadDir = fallbackDir;
+      ensureDirectory(this.downloadDir);
+    }
+
+    if (this.downloadDir && fs.existsSync(this.downloadDir)) {
       this.loadExistingDownloads();
-    } catch (err) {
-      this.logger.warn(`Could not create download directory: ${this.downloadDir}`, err);
+    } else {
+      this.logger.warn('VideoDownloaderService disabled because no writable download directory could be created');
     }
   }
 
@@ -55,6 +80,10 @@ export class VideoDownloaderService {
    * Load previously downloaded files from the downloads directory
    */
   private loadExistingDownloads() {
+    if (!this.downloadDir || !fs.existsSync(this.downloadDir)) {
+      return;
+    }
+
     try {
       const files = fs.readdirSync(this.downloadDir).filter(f => {
         const ext = path.extname(f).toLowerCase();
@@ -114,7 +143,7 @@ export class VideoDownloaderService {
       // Always try single video first - it's faster and more reliable
       this.logger.log(`Fetching info for: ${cleanUrl}`);
       
-      const { stdout: fullJson } = await execFileAsync(ytdlpPath, [
+      const { stdout: fullJson, stderr: stderrOut } = await execFileAsync(ytdlpPath, [
         '--dump-json',
         '--no-playlist',
         '--no-warnings',
@@ -122,6 +151,10 @@ export class VideoDownloaderService {
         '--socket-timeout', '15',
         cleanUrl,
       ], { maxBuffer: 50 * 1024 * 1024, timeout: 45000 });
+
+      if (!fullJson) {
+        throw new Error(stderrOut || 'No output from yt-dlp');
+      }
 
       const videoData = JSON.parse(fullJson);
 
@@ -191,24 +224,30 @@ export class VideoDownloaderService {
             };
           }
         } catch (plErr) {
-          this.logger.warn('Could not fetch playlist info, continuing with single video', plErr.message);
+          this.logger.warn('Could not fetch playlist info, continuing with single video', (plErr as any).message);
         }
       }
 
       return result;
-    } catch (error) {
-      this.logger.error('Failed to fetch video info', error.message);
+    } catch (error: any) {
+      this.logger.error('Failed to fetch video info', error.message, error.stderr);
       
-      // Provide helpful error messages
+      // Extract useful error messages from yt-dlp stderr
       let message = 'Failed to fetch video info.';
-      if (error.message?.includes('timeout')) {
-        message = 'Request timed out. The video might be restricted or the URL is invalid.';
+      const errorMsg = error.stderr || error.message || '';
+      
+      if (errorMsg.includes('No video formats found')) {
+        message = 'This video has no downloadable formats. It may be age-restricted, private, or not available in your region.';
+      } else if (errorMsg.includes('not available')) {
+        message = 'This video is not available. It may have been deleted or made private.';
+      } else if (errorMsg.includes('does not contain any streams')) {
+        message = 'The URL does not contain any downloadable streams.';
+      } else if (error.message?.includes('timeout') || errorMsg.includes('timed out')) {
+        message = 'Request timed out. The video might be restricted, or your connection is slow. Please try a different URL.';
       } else if (error.message?.includes('not found') || error.message?.includes('ENOENT')) {
         message = 'yt-dlp is not installed. Install with npm install yt-dlp-static or brew install yt-dlp';
-      } else if (error.stderr) {
-        message = `yt-dlp error: ${error.stderr.substring(0, 200)}`;
-      } else {
-        message = `Error: ${error.message || 'Unknown error'}`;
+      } else if (errorMsg) {
+        message = `yt-dlp error: ${errorMsg.split('\n')[0].substring(0, 200)}`;
       }
       
       throw new BadRequestException(message);
@@ -219,6 +258,10 @@ export class VideoDownloaderService {
    * Start downloading a video using yt-dlp
    */
   async startDownload(dto: StartDownloadDto) {
+    if (!this.downloadDir || !fs.existsSync(this.downloadDir)) {
+      throw new BadRequestException('Download storage is unavailable. Please try again later.');
+    }
+
     const { cleanUrl } = this.cleanUrl(dto.url);
     const quality = dto.quality || '1080';
     const jobId = uuidv4();
@@ -397,9 +440,23 @@ export class VideoDownloaderService {
           resolve();
         } else {
           job.status = 'failed';
-          job.error = stderrOutput
-            ? stderrOutput.split('\n').filter(l => l.includes('ERROR')).join('; ') || `yt-dlp exited with code ${code}`
-            : `yt-dlp exited with code ${code}`;
+          // Extract meaningful error messages from stderr
+          let errorMsg = '';
+          
+          if (stderrOutput) {
+            // First try to find ERROR lines
+            const errorLines = stderrOutput.split('\n').filter(l => l.includes('ERROR'));
+            if (errorLines.length > 0) {
+              errorMsg = errorLines[0].substring(0, 200);
+            } else {
+              // If no ERROR lines, get the last non-empty line
+              const lines = stderrOutput.split('\n').filter(l => l.trim());
+              errorMsg = lines[lines.length - 1]?.substring(0, 200) || '';
+            }
+          }
+          
+          job.error = errorMsg || `yt-dlp exited with code ${code}`;
+          this.logger.error(`Download job ${job.id} failed: ${job.error}`);
           reject(new Error(job.error));
         }
       });
@@ -407,9 +464,9 @@ export class VideoDownloaderService {
       proc.on('error', (err) => {
         this.activeProcesses.delete(job.id);
         job.status = 'failed';
-        job.error = `Failed to start yt-dlp: ${err.message}. Make sure yt-dlp is installed (brew install yt-dlp).`;
-        reject(err);
-      });
+        job.error = `Failed to start yt-dlp: ${err.message}. Make sure yt-dlp is installed (npm install yt-dlp-static or brew install yt-dlp).`;
+        this.logger.error(`yt-dlp process error: ${job.error}`);
+        reject(err);      });
     });
   }
 
