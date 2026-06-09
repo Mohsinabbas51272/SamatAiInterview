@@ -22,9 +22,25 @@ import * as fs from 'fs';
 
 // Helper to ensure upload destination directory exists
 // Vercel serverless has read-only filesystem, only /tmp is writable
-const uploadDir = process.env.VERCEL ? '/tmp/uploads' : './uploads';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+let uploadDir = '/tmp/uploads';
+try {
+  if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    uploadDir = './uploads';
+  }
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+} catch {
+  // Silently handle — app won't crash, uploads just won't work on this instance
+  console.warn('Could not create upload directory at', uploadDir);
+  try {
+    uploadDir = '/tmp/uploads';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+  } catch {
+    console.warn('Fallback /tmp/uploads also failed');
+  }
 }
 
 @ApiTags('Resume')
