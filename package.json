@@ -36,6 +36,7 @@
     "express": "^5.2.1",
     "handlebars": "^4.7.9",
     "ioredis": "^5.11.0",
+    "yt-dlp-static": "^1.0.6",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.10.1",
     "passport": "^0.7.0",
