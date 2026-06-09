@@ -33,12 +33,21 @@ export class VideoDownloaderService {
   private concurrencyLimit = 2;
 
   constructor() {
-    this.downloadDir = path.join(os.homedir(), 'Downloads', 'VideoDownloader');
-    if (!fs.existsSync(this.downloadDir)) {
-      fs.mkdirSync(this.downloadDir, { recursive: true });
+    // Use /tmp on serverless environments (Vercel has read-only filesystem)
+    const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
+    this.downloadDir = isServerless
+      ? '/tmp/VideoDownloader'
+      : path.join(os.homedir(), 'Downloads', 'VideoDownloader');
+
+    try {
+      if (!fs.existsSync(this.downloadDir)) {
+        fs.mkdirSync(this.downloadDir, { recursive: true });
+      }
+      // Load existing completed files on startup
+      this.loadExistingDownloads();
+    } catch (err) {
+      this.logger.warn(`Could not create download directory: ${this.downloadDir}`, err);
     }
-    // Load existing completed files on startup
-    this.loadExistingDownloads();
   }
 
   /**
