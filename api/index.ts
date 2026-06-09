@@ -55,6 +55,17 @@ export default async (req: any, res: any) => {
     if (!appPromise) {
       appPromise = bootstrap();
     }
+    
+    if (bootstrapError) {
+      return res.status(503).json({
+        success: false,
+        statusCode: 503,
+        message: 'Service temporarily unavailable. Database connection or initialization error.',
+        error: process.env.NODE_ENV === 'development' ? bootstrapError.message : 'Internal Server Error',
+        timestamp: new Date().toISOString(),
+      });
+    }
+    
     await appPromise;
     server(req, res);
   } catch (error: any) {
