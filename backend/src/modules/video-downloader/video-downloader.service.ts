@@ -5,10 +5,34 @@ import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import ytdlpPath from 'yt-dlp-static';
 import { v4 as uuidv4 } from 'uuid';
 
 const execFileAsync = promisify(execFile);
+
+// Resolve yt-dlp binary path: prefer system binary, fall back to static
+function resolveYtDlpPath(): string {
+  // On development/local: try system yt-dlp first
+  if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    const systemBinary = '/usr/local/bin/yt-dlp';
+    if (fs.existsSync(systemBinary)) {
+      return systemBinary;
+    }
+    // Also try common Linux path
+    if (fs.existsSync('/usr/bin/yt-dlp')) {
+      return '/usr/bin/yt-dlp';
+    }
+  }
+
+  // On serverless or if system binary not found: use npm package (yt-dlp-static)
+  try {
+    return require('yt-dlp-static');
+  } catch (e) {
+    throw new Error('yt-dlp not found. Install locally: brew install yt-dlp or npm install yt-dlp-static');
+  }
+}
+
+const ytdlpPath = resolveYtDlpPath();
+
 
 interface DownloadJob {
   id: string;
