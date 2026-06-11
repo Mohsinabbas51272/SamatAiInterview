@@ -61,54 +61,6 @@ export class VideoDownloaderService {
   private concurrencyLimit = 2;
   private readonly isEnabled: boolean;
 
-  private async fetchFromRapidApi(url: string): Promise<any> {
-    const apiKey = process.env.RAPIDAPI_KEY;
-    const apiHost = process.env.RAPIDAPI_HOST || 'all-in-one-video-downloader.p.rapidapi.com';
-    const apiUrl = process.env.RAPIDAPI_URL || `https://${apiHost}/download`;
-
-    if (!apiKey) {
-      throw new Error('RAPIDAPI_KEY is not configured');
-    }
-
-    this.logger.log(`Calling RapidAPI for url: ${url} using host: ${apiHost}`);
-
-    const isGet = process.env.RAPIDAPI_METHOD === 'GET';
-
-    try {
-      let response;
-      if (isGet) {
-        const finalUrl = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}url=${encodeURIComponent(url)}`;
-        response = await fetch(finalUrl, {
-          method: 'GET',
-          headers: {
-            'x-rapidapi-key': apiKey,
-            'x-rapidapi-host': apiHost,
-          },
-        });
-      } else {
-        response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-rapidapi-key': apiKey,
-            'x-rapidapi-host': apiHost,
-          },
-          body: JSON.stringify({ url }),
-        });
-      }
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`RapidAPI returned HTTP ${response.status}: ${errText}`);
-      }
-
-      return await response.json();
-    } catch (err: any) {
-      this.logger.error(`RapidAPI call failed: ${err.message}`);
-      throw err;
-    }
-  }
-
   constructor() {
     // Check if yt-dlp is available
     if (!ytdlpPath) {
@@ -224,56 +176,11 @@ export class VideoDownloaderService {
    * Fetch video/playlist metadata using yt-dlp --dump-json
    */
   async fetchInfo(dto: FetchInfoDto) {
-    // If RapidAPI key is set, use it (works on Vercel!)
-    if (process.env.RAPIDAPI_KEY) {
-      try {
-        const apiData = await this.fetchFromRapidApi(dto.url);
-        
-        let rawLinks = apiData.links || apiData.formats || apiData.videos || [];
-        if (typeof rawLinks === 'object' && !Array.isArray(rawLinks)) {
-          rawLinks = Object.values(rawLinks);
-        }
-
-        const availableQualities = [];
-        for (const item of rawLinks) {
-          const url = item.link || item.url || item.downloadUrl;
-          if (!url) continue;
-
-          let qualityStr = item.quality || item.height || item.resolution || '720p';
-          if (typeof qualityStr === 'number') {
-            qualityStr = `${qualityStr}p`;
-          }
-          const qualityNum = parseInt(qualityStr.replace(/[^0-9]/g, '')) || 720;
-
-          availableQualities.push({
-            formatId: url, // Store direct download link
-            quality: qualityNum,
-            ext: item.ext || item.type || 'mp4',
-            filesize: parseInt(item.filesize || item.size || '0') || 0,
-          });
-        }
-
-        return {
-          type: 'video',
-          title: apiData.title || 'Untitled Video',
-          thumbnail: apiData.thumbnail || apiData.picture || null,
-          duration: parseInt(apiData.duration) || 0,
-          uploader: apiData.uploader || apiData.author || 'Unknown',
-          description: (apiData.description || '').substring(0, 300),
-          viewCount: parseInt(apiData.viewCount) || 0,
-          uploadDate: apiData.uploadDate || null,
-          availableQualities,
-          cleanUrl: dto.url,
-        };
-      } catch (err: any) {
-        throw new BadRequestException(`RapidAPI Error: ${err.message}`);
-      }
-    }
-
     if (!this.isEnabled || !ytdlpPath) {
       throw new BadRequestException(
         'Video downloader is not available on this platform. ' +
-        'This feature requires a RapidAPI key configured in production, or local yt-dlp binary for development.'
+        'This feature requires yt-dlp which is not supported on serverless environments. ' +
+        'Please use the web version or contact support.'
       );
     }
 
@@ -398,72 +305,10 @@ export class VideoDownloaderService {
    * Start downloading a video using yt-dlp
    */
   async startDownload(dto: StartDownloadDto) {
-    const { cleanUrl } = this.cleanUrl(dto.url);
-    const quality = dto.quality || '1080';
-    const jobId = uuidv4();
-
-    // If RapidAPI key is set, use it (works on Vercel!)
-    if (process.env.RAPIDAPI_KEY) {
-      try {
-        const apiData = await this.fetchFromRapidApi(cleanUrl);
-        
-        let rawLinks = apiData.links || apiData.formats || apiData.videos || [];
-        if (typeof rawLinks === 'object' && !Array.isArray(rawLinks)) {
-          rawLinks = Object.values(rawLinks);
-        }
-
-        // Find matching quality
-        let selectedLink = null;
-        if (quality === 'audio') {
-          selectedLink = rawLinks.find((item: any) => 
-            (item.type && String(item.type).toLowerCase().includes('mp3')) ||
-            (item.quality && String(item.quality).toLowerCase().includes('audio')) ||
-            (item.quality && String(item.quality).toLowerCase().includes('kbps'))
-          );
-        } else {
-          selectedLink = rawLinks.find((item: any) => {
-            const itemQuality = String(item.quality || item.height || item.resolution || '');
-            return itemQuality.includes(quality);
-          });
-        }
-
-        if (!selectedLink && rawLinks.length > 0) {
-          selectedLink = rawLinks[0];
-        }
-
-        const downloadUrl = selectedLink ? (selectedLink.link || selectedLink.url || selectedLink.downloadUrl) : null;
-        if (!downloadUrl) {
-          throw new Error('No download link returned by the API for this video.');
-        }
-
-        const title = apiData.title || 'video';
-        const ext = selectedLink.ext || selectedLink.type || 'mp4';
-        const filename = `${title.substring(0, 50).replace(/[^a-zA-Z0-9]/g, '_')}_${quality}p.${ext}`;
-
-        const job: DownloadJob = {
-          id: jobId,
-          url: cleanUrl,
-          quality,
-          status: 'completed',
-          progress: 100,
-          filename,
-          filePath: downloadUrl, // Store direct download URL
-          fileSize: parseInt(selectedLink.filesize || selectedLink.size || '0') || 0,
-          title,
-          createdAt: new Date(),
-        };
-
-        this.jobs.set(jobId, job);
-        return { jobId, status: 'completed', message: 'Download ready' };
-      } catch (err: any) {
-        throw new BadRequestException(`RapidAPI Download Error: ${err.message}`);
-      }
-    }
-
     if (!this.isEnabled || !ytdlpPath) {
       throw new BadRequestException(
         'Video downloader is not available on this platform. ' +
-        'This feature requires a RapidAPI key configured in production, or local yt-dlp binary for development.'
+        'This feature requires yt-dlp which is not supported on serverless environments.'
       );
     }
 
@@ -751,8 +596,7 @@ export class VideoDownloaderService {
     if (job.status !== 'completed') {
       throw new BadRequestException('Download not yet completed');
     }
-    const isUrl = job.filePath?.startsWith('http://') || job.filePath?.startsWith('https://');
-    if (!job.filePath || (!isUrl && !fs.existsSync(job.filePath))) {
+    if (!job.filePath || !fs.existsSync(job.filePath)) {
       throw new NotFoundException('File not found on server');
     }
     return {
