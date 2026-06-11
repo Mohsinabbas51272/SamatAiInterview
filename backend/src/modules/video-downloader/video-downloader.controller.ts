@@ -52,6 +52,11 @@ export class VideoDownloaderController {
   async getFile(@Param('jobId') jobId: string, @Req() req: Request, @Res() res: Response) {
     const { filePath, filename, fileSize } = this.service.getDownloadFile(jobId);
 
+    // If filePath is a direct download URL, redirect the client directly!
+    if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+      return res.redirect(filePath);
+    }
+
     // Detect MIME type from extension
     const ext = path.extname(filename).toLowerCase();
     const mimeTypes: Record<string, string> = {
