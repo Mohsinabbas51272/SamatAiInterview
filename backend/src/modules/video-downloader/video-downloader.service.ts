@@ -25,7 +25,9 @@ function resolveYtDlpPath(): string | null {
 
   // On serverless: try to use npm package (yt-dlp-static)
   try {
-    return require('yt-dlp-static');
+    // Prevent Vercel bundler from statically resolving and crashing on startup
+    const dynamicRequire = eval('require');
+    return dynamicRequire('yt-dlp-static');
   } catch (e) {
     // yt-dlp-static not available or unsupported platform
     return null;
