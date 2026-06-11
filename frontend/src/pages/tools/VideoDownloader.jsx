@@ -9,10 +9,13 @@ import {
 import videoDownloaderService from '../../services/videoDownloaderService';
 
 const QUALITY_OPTIONS = [
+  { value: '360', label: '360p', tag: 'Low', color: '#94a3b8' },
+  { value: '480', label: '480p', tag: 'SD', color: '#34d399' },
   { value: '720', label: '720p', tag: 'HD', color: '#60a5fa' },
   { value: '1080', label: '1080p', tag: 'Full HD', color: '#a78bfa' },
   { value: '1440', label: '1440p', tag: '2K QHD', color: '#f472b6' },
   { value: '2160', label: '2160p', tag: '4K Ultra', color: '#fb923c' },
+  { value: 'audio', label: 'MP3', tag: 'Audio', color: '#facc15' },
 ];
 
 function formatBytes(bytes) {
@@ -251,27 +254,53 @@ export default function VideoDownloader() {
     }
   };
 
-  // Save file to user's machine
-  const handleSaveFile = (jobId, filename) => {
+  // Save file to user's machine — uses fetch+blob for cross-device compatibility
+  // (iOS Safari blocks anchor.click() on blob URLs created without user gesture)
+  const handleSaveFile = async (jobId, filename) => {
     const fileUrl = videoDownloaderService.getFileUrl(jobId);
-    const a = document.createElement('a');
-    a.href = fileUrl;
-    a.download = filename || 'video.mp4';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    try {
+      const response = await fetch(fileUrl, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('accessToken') || ''}`,
+        },
+      });
+      if (!response.ok) throw new Error(`Server responded ${response.status}`);
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename || 'video.mp4';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+
+      // Cleanup after a short delay to allow the download to start
+      setTimeout(() => {
+        URL.revokeObjectURL(blobUrl);
+        document.body.removeChild(a);
+      }, 2000);
+    } catch (err) {
+      // Fallback: open in new tab (works on most devices)
+      console.warn('Blob download failed, falling back to window.open:', err);
+      window.open(fileUrl, '_blank');
+    }
   };
 
+
+
   // Save all completed downloads to the user's machine at once
-  const handleSaveAllCompleted = () => {
+  const handleSaveAllCompleted = async () => {
     const completed = downloads.filter(d => d.status === 'completed');
     if (completed.length === 0) return;
-    
-    completed.forEach((dl, index) => {
-      setTimeout(() => {
-        handleSaveFile(dl.id, dl.filename);
-      }, index * 800); // 800ms spacing to prevent browser blockages
-    });
+    for (let i = 0; i < completed.length; i++) {
+      await handleSaveFile(completed[i].id, completed[i].filename);
+      // Small delay between downloads to avoid browser blocking multiple simultaneous saves
+      if (i < completed.length - 1) await new Promise(r => setTimeout(r, 1500));
+    }
   };
 
   // Clear all download history and files
@@ -498,7 +527,7 @@ export default function VideoDownloader() {
                 {/* Download Button */}
                 <button onClick={handleDownload} className="vd-btn-download" id="download-single-btn">
                   <Download style={{ width: 18, height: 18 }} />
-                  <span>Download {quality}p MP4</span>
+                  <span>{quality === 'audio' ? 'Download Audio MP3' : `Download ${quality}p MP4`}</span>
                   <Zap style={{ width: 14, height: 14 }} />
                 </button>
               </div>

@@ -351,23 +351,56 @@ export class VideoDownloaderService {
 
     job.status = 'downloading';
 
-    const outputTemplate = path.join(this.downloadDir, `%(title).80s_${job.quality}p.%(ext)s`);
+    const outputTemplate = path.join(this.downloadDir, `%(title).80B_%(height)sp.%(ext)s`);
 
-    // Prefer H264 (avc1) and AAC (m4a) natively for max performance and macOS/iOS compatibility
-    const formatSelection = `bestvideo[vcodec^=avc1][height<=${dto.quality || 1080}]+bestaudio[ext=m4a]/bestvideo[height<=${dto.quality || 1080}]+bestaudio/best[height<=${dto.quality || 1080}]/best`;
+    const isAudio = dto.quality === 'audio';
 
-    const args: string[] = [
-      '-f', formatSelection,
-      '--recode-video', 'mp4',
-      '-o', outputTemplate,
-      '--newline',
-      '--no-warnings',
-      '--no-check-certificates',
-      '--socket-timeout', '30',
-      '--retries', '3',
-      '--no-playlist',
-      '--progress',
-    ];
+    let args: string[];
+
+    if (isAudio) {
+      // Audio-only download: best audio → convert to mp3
+      args = [
+        '-f', 'bestaudio/best',
+        '-x',
+        '--audio-format', 'mp3',
+        '--audio-quality', '0',
+        '-o', path.join(this.downloadDir, `%(title).80B.%(ext)s`),
+        '--newline',
+        '--no-warnings',
+        '--no-check-certificates',
+        '--socket-timeout', '30',
+        '--retries', '5',
+        '--fragment-retries', '5',
+        '--no-playlist',
+        '--progress',
+      ];
+    } else {
+      const maxHeight = dto.quality || '1080';
+      // Format selection: prefer H264+AAC (universally playable incl. iOS/Android),
+      // fall back to any video+audio merge, then best single file.
+      const formatSelection = [
+        `bestvideo[vcodec^=avc1][height<=${maxHeight}]+bestaudio[ext=m4a]`,
+        `bestvideo[vcodec^=avc1][height<=${maxHeight}]+bestaudio`,
+        `bestvideo[height<=${maxHeight}]+bestaudio[ext=m4a]`,
+        `bestvideo[height<=${maxHeight}]+bestaudio`,
+        `best[height<=${maxHeight}]`,
+        `best`,
+      ].join('/');
+
+      args = [
+        '-f', formatSelection,
+        '--merge-output-format', 'mp4',
+        '-o', outputTemplate,
+        '--newline',
+        '--no-warnings',
+        '--no-check-certificates',
+        '--socket-timeout', '30',
+        '--retries', '5',
+        '--fragment-retries', '5',
+        '--no-playlist',
+        '--progress',
+      ];
+    }
 
     if (dto.isPlaylist && dto.playlistIndex) {
       // Remove --no-playlist and add playlist item selection

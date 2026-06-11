@@ -34,7 +34,6 @@
     "@nestjs/swagger": "^7.4.2",
     "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^5.22.0",
-    "yt-dlp-static": "^1.0.6",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.77.7",
     "cache-manager": "^5.7.6",
@@ -50,6 +49,9 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "uuid": "^9.0.1"
+  },
+  "optionalDependencies": {
+    "yt-dlp-static": "^1.0.6"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
