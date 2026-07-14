@@ -422,6 +422,7 @@ model Interview {
   updatedAt          DateTime        @updatedAt
   answers            InterviewAnswer[]
   report             Report?
+  questions          Question[]
 }
 
 model Question {
@@ -434,6 +435,8 @@ model Question {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
   answers        InterviewAnswer[]
+  interviewId    String?
+  interview      Interview?         @relation(fields: [interviewId], references: [id], onDelete: Cascade)
 }
 
 model InterviewAnswer {

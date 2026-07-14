@@ -32,9 +32,15 @@ export default function FeedbackManagement() {
         // Show completed interviews for feedback review
         const completed = data.filter((i) => i.status === 'COMPLETED');
         setInterviews(completed);
-        if (completed.length > 0) {
-          setSelectedInterview(completed[0]);
-        }
+        // Only set default selection if nothing is currently selected
+        setSelectedInterview((prev) => {
+          if (prev) {
+            // Keep current selection if it still exists in new data
+            const stillExists = completed.find((c) => c.id === prev.id);
+            return stillExists || (completed.length > 0 ? completed[0] : null);
+          }
+          return completed.length > 0 ? completed[0] : null;
+        });
       } catch (err) {
         console.warn('Failed to load completed interviews:', err);
       } finally {
@@ -129,10 +135,6 @@ export default function FeedbackManagement() {
                     key={session.id}
                     onClick={() => setSelectedInterview(session)}
                     className={`p-3.5 rounded-2xl text-left border cursor-pointer transition-all ${
-                      selectedSessionId => selectedSessionId === session.id
-                        ? 'border-blue-500 bg-blue-500/5 text-blue-600 dark:text-blue-400'
-                        : ''
-                    } ${
                       selectedInterview?.id === session.id
                         ? 'border-blue-500 bg-blue-500/5 text-blue-600 dark:text-blue-400'
                         : 'border-slate-200 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/50'

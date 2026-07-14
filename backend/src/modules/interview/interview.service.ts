@@ -266,18 +266,25 @@ export class InterviewService {
   // --- Dynamic AI Utilities ---
 
   private async generateInterviewQuestions(interview: any) {
+    // First, check if questions already exist for this specific interview
+    const existingQuestions = await this.prisma.question.findMany({
+      where: { interviewId: interview.id },
+    });
+
+    if (existingQuestions.length > 0) {
+      return existingQuestions;
+    }
+
     const skills = interview.job.skills.join(', ');
     const requirements = interview.job.requirements.join(', ');
 
-    // Check if we already have general questions in DB
-    const existingCount = await this.prisma.question.count();
-    
     // Call Groq API to generate 5 personalized interview questions
     const apiKey = this.configService.get<string>('GROQ_API_KEY');
     if (!apiKey) {
-      // Fallback: return existing or default questions
-      if (existingCount > 0) {
-        return this.prisma.question.findMany({ take: 5 });
+      // Fallback: return existing general questions or create seed questions
+      const generalCount = await this.prisma.question.count();
+      if (generalCount > 0) {
+        return this.prisma.question.findMany({ where: { interviewId: null }, take: 5 });
       }
       return this.createSeedQuestions();
     }
@@ -312,6 +319,7 @@ export class InterviewService {
             difficulty: q.difficulty as QuestionDifficulty || QuestionDifficulty.MEDIUM,
             expectedAnswer: q.expectedAnswer,
             timeLimit: q.timeLimit || 120,
+            interviewId: interview.id,
           },
         });
         createdQuestions.push(created);
@@ -320,8 +328,9 @@ export class InterviewService {
       return createdQuestions;
     } catch (e) {
       // Fallback
-      if (existingCount > 0) {
-        return this.prisma.question.findMany({ take: 5 });
+      const generalCount = await this.prisma.question.count();
+      if (generalCount > 0) {
+        return this.prisma.question.findMany({ where: { interviewId: null }, take: 5 });
       }
       return this.createSeedQuestions();
     }

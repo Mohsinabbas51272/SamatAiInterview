@@ -57,12 +57,12 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   // ─── Helper: Extract data from API response ───
-  const extractData = (response) => {
+  const extractData = useCallback((response) => {
     if (response && response.data !== undefined) {
       return response.data;
     }
     return response;
-  };
+  }, []);
 
   // ─── Fetch Notifications ───
   const fetchNotifications = useCallback(async () => {
