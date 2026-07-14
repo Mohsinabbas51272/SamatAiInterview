@@ -14,12 +14,18 @@ export class SystemConfigService implements OnModuleInit {
       await this.prisma.systemConfig.create({
         data: {
           id: 'default',
-          model: 'gemini-2.0-flash',
+          model: 'llama-3.3-70b-versatile',
           temperature: 0.7,
           screeningWeight: 40,
           interviewWeight: 60,
           systemPrompt: 'You are Aria, an AI technical interviewer. Ask candidates technical questions and evaluate their responses constructively.',
         },
+      });
+    } else if (config.model.includes('gemini')) {
+      // Auto-migrate Gemini configs to Groq model
+      await this.prisma.systemConfig.update({
+        where: { id: 'default' },
+        data: { model: 'llama-3.3-70b-versatile' },
       });
     }
   }
@@ -32,12 +38,17 @@ export class SystemConfigService implements OnModuleInit {
       config = await this.prisma.systemConfig.create({
         data: {
           id: 'default',
-          model: 'gemini-2.0-flash',
+          model: 'llama-3.3-70b-versatile',
           temperature: 0.7,
           screeningWeight: 40,
           interviewWeight: 60,
           systemPrompt: 'You are Aria, an AI technical interviewer. Ask candidates technical questions and evaluate their responses constructively.',
         },
+      });
+    } else if (config.model.includes('gemini')) {
+      config = await this.prisma.systemConfig.update({
+        where: { id: 'default' },
+        data: { model: 'llama-3.3-70b-versatile' },
       });
     }
     return config;

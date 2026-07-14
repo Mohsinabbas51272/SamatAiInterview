@@ -1,42 +1,49 @@
-// Google Gemini AI Service for Smart Interview Agent
+// Groq AI Service for Smart Interview Agent
 // Provides AI-powered interview question generation and response evaluation
 
-const GEMINI_API_KEY = 'AIzaSyDsz6I8Ru0Z-XC53tehgjoyifMvXzL6_i8';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || '';
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 /**
- * Send a prompt to Gemini and get a text response
+ * Send a prompt to Groq and get a text response
  */
-export async function askGemini(prompt, options = {}) {
+export async function askGroq(prompt, options = {}) {
   try {
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    const response = await fetch(GROQ_API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`
+      },
       body: JSON.stringify({
-        contents: [
+        model: options.model || 'llama-3.3-70b-versatile',
+        messages: [
           {
-            parts: [{ text: prompt }]
+            role: 'system',
+            content: 'You are Aria, an AI technical recruiter. Analyze candidates answers objectively and constructively.'
+          },
+          {
+            role: 'user',
+            content: prompt
           }
         ],
-        generationConfig: {
-          temperature: options.temperature ?? 0.7,
-          maxOutputTokens: options.maxTokens ?? 512,
-          topP: 0.95,
-        }
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 512,
+        response_format: options.jsonMode ? { type: 'json_object' } : undefined
       })
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.warn('Gemini API error:', response.status, errorData);
+      console.warn('Groq API error:', response.status, errorData);
       return null;
     }
 
     const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = data?.choices?.[0]?.message?.content;
     return text || null;
   } catch (err) {
-    console.warn('Gemini API call failed:', err);
+    console.warn('Groq API call failed:', err);
     return null;
   }
 }
@@ -51,7 +58,7 @@ They answered: "${answer}"
 
 Give a brief 1-2 sentence professional follow-up acknowledgment of their answer before transitioning to the next question. Be encouraging but objective. Keep it concise and natural.`;
 
-  return askGemini(prompt, { maxTokens: 150, temperature: 0.6 });
+  return askGroq(prompt, { maxTokens: 150, temperature: 0.6 });
 }
 
 /**
@@ -76,7 +83,7 @@ Provide a professional evaluation in this exact JSON format (no markdown, just r
   "recommendation": "1 sentence final recommendation"
 }`;
 
-  const result = await askGemini(prompt, { maxTokens: 400, temperature: 0.4 });
+  const result = await askGroq(prompt, { maxTokens: 400, temperature: 0.4, jsonMode: true });
   if (!result) return null;
 
   try {
@@ -84,7 +91,7 @@ Provide a professional evaluation in this exact JSON format (no markdown, just r
     const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     return JSON.parse(cleaned);
   } catch {
-    console.warn('Failed to parse Gemini evaluation JSON:', result);
+    console.warn('Failed to parse Groq evaluation JSON:', result);
     return null;
   }
 }

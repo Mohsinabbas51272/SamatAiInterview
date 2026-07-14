@@ -31,7 +31,7 @@ export const AppProvider = ({ children }) => {
       }
     }
     return {
-      model: 'gemini-1.5-flash',
+      model: 'llama-3.3-70b-versatile',
       temperature: 0.7,
       screeningWeight: 40,
       interviewWeight: 60,

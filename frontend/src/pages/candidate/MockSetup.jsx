@@ -102,7 +102,7 @@ export default function MockSetup() {
               Answer generated questions via voice or keyboard simulation. Aria will evaluate your response speed, technical alignment, and confidence index immediately.
             </p>
             <div className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase bg-white/20 px-2 py-0.5 rounded">
-              <Sparkles className="w-3 h-3" /> Powered by Gemini
+              <Sparkles className="w-3 h-3" /> Powered by Groq
             </div>
           </div>
         </div>

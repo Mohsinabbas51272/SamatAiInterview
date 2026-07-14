@@ -16,8 +16,8 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 export class InterviewController {
   constructor(private readonly interviewService: InterviewService) {}
 
-  @ApiOperation({ summary: 'Schedule an interview (HR/Admin only)' })
-  @Roles(Role.HR, Role.ADMIN)
+  @ApiOperation({ summary: 'Schedule an interview (HR/Admin/Candidate)' })
+  @Roles(Role.HR, Role.ADMIN, Role.CANDIDATE)
   @Post()
   schedule(@Body() scheduleInterviewDto: ScheduleInterviewDto) {
     return this.interviewService.schedule(scheduleInterviewDto);

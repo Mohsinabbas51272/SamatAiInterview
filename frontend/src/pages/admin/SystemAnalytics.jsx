@@ -19,7 +19,7 @@ export default function SystemAnalytics() {
   // Since we don't have a real audit/gemini log system yet, we use mock logs
   const [systemLogs] = useState([
     { id: 'log-1', timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16), action: 'System Backup', user: 'SYSTEM', status: 'Success', details: 'Automated DB snapshot completed' },
-    { id: 'log-2', timestamp: new Date(Date.now() - 3600000).toISOString().replace('T', ' ').substring(0, 16), action: 'AI Model Update', user: 'ADMIN', status: 'Success', details: 'Switched to Gemini 1.5 Flash' },
+    { id: 'log-2', timestamp: new Date(Date.now() - 3600000).toISOString().replace('T', ' ').substring(0, 16), action: 'AI Model Update', user: 'ADMIN', status: 'Success', details: 'Switched to Llama 3.3 70B' },
     { id: 'log-3', timestamp: new Date(Date.now() - 7200000).toISOString().replace('T', ' ').substring(0, 16), action: 'Failed Login', user: 'unknown@test.com', status: 'Failed', details: 'Invalid credentials provided' }
   ]);
 
@@ -88,14 +88,14 @@ export default function SystemAnalytics() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold font-display text-slate-800 dark:text-white">System Metrics & Auditing</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Monitor Gemini API traffic loads, token utilization, and audit logs</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Monitor Groq API traffic loads, token utilization, and audit logs</p>
       </div>
 
       {/* Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Gemini API Requests</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Groq API Requests</span>
             <h3 className="text-2xl font-bold font-display text-slate-800 dark:text-white">{(dbStats.totalInterviews * 12 + 3110).toLocaleString()}</h3>
             <p className="text-xs text-slate-400">Past 24 hours</p>
           </div>
@@ -140,7 +140,7 @@ export default function SystemAnalytics() {
 
       {/* Traffic Area chart */}
       <Card className="p-6 space-y-4">
-        <h4 className="font-bold text-base font-display text-slate-800 dark:text-slate-200">Gemini API Traffic load</h4>
+        <h4 className="font-bold text-base font-display text-slate-800 dark:text-slate-200">Groq API Traffic load</h4>
         <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={mockApiTraffic}>

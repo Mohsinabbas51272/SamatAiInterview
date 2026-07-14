@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { ResumeStatus } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pdfParse = require('pdf-parse');
 
 @Injectable()
 export class ResumeService {
@@ -91,11 +93,10 @@ export class ResumeService {
       }
 
       const fileBuffer = fs.readFileSync(filePath);
-      const base64Data = fileBuffer.toString('base64');
 
-      const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+      const apiKey = this.configService.get<string>('GROQ_API_KEY');
       if (!apiKey) {
-        this.logger.warn('GEMINI_API_KEY not configured — saving resume as UPLOADED without parsing');
+        this.logger.warn('GROQ_API_KEY not configured — saving resume as UPLOADED without parsing');
         await this.prisma.resume.update({
           where: { id: resumeId },
           data: { status: ResumeStatus.UPLOADED },
@@ -103,11 +104,30 @@ export class ResumeService {
         return;
       }
 
+      // Extract text using pdf-parse if it is a PDF
+      let resumeText = '';
+      if (mimeType === 'application/pdf' || filePath.toLowerCase().endsWith('.pdf')) {
+        try {
+          const parsedPdf = await pdfParse(fileBuffer);
+          resumeText = parsedPdf.text;
+        } catch (pdfErr) {
+          this.logger.warn(`Failed to parse PDF with pdf-parse: ${pdfErr.message}. Falling back to buffer string.`);
+          resumeText = fileBuffer.toString('utf-8');
+        }
+      } else {
+        resumeText = fileBuffer.toString('utf-8');
+      }
+
       const prompt = `
         You are an expert AI Applicant Tracking System (ATS) and Resume Parser.
-        Analyze the attached resume and extract the key information.
+        Analyze the attached resume text and extract the key information.
         You must return a raw JSON object matching the schema below.
         Do not wrap the output in markdown block. Return ONLY valid JSON.
+
+        Resume Content:
+        """
+        ${resumeText}
+        """
         
         Desired JSON schema:
         {
@@ -134,42 +154,39 @@ export class ResumeService {
         }
       `;
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: prompt },
-                  {
-                    inlineData: {
-                      mimeType: mimeType || 'application/pdf',
-                      data: base64Data,
-                    },
-                  },
-                ],
-              },
-            ],
-            generationConfig: {
-              responseMimeType: 'application/json',
-            },
-          }),
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
         },
-      );
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert ATS (Applicant Tracking System) parser. Your task is to extract resume data and return a valid JSON object matching the requested schema.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.2,
+          response_format: { type: 'json_object' }
+        }),
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+        throw new Error(`Groq API error: ${response.status} - ${errorText}`);
       }
 
       const responseData = await response.json();
-      const textResponse = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
+      const textResponse = responseData.choices?.[0]?.message?.content;
 
       if (!textResponse) {
-        throw new Error('Empty response from Gemini AI');
+        throw new Error('Empty response from Groq AI');
       }
 
       const parsedData = JSON.parse(textResponse.trim());

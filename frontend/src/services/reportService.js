@@ -17,6 +17,11 @@ const reportService = {
     const response = await api.get(`/reports/interview/${interviewId}`);
     return response.data;
   },
+
+  // Alias used by FeedbackReport.jsx and ResultsFeedback.jsx
+  async getByInterview(interviewId) {
+    return this.getByInterviewId(interviewId);
+  },
 };
 
 export default reportService;

@@ -20,7 +20,7 @@ import { useApp } from '../context/AppContext';
 import { Card, CardBody } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
 import { ProgressBar } from '../components/UI/Progress';
-import { evaluateAnswer } from '../services/geminiService';
+import { evaluateAnswer } from '../services/groqService';
 
 export default function InterviewInterface() {
   const navigate = useNavigate();

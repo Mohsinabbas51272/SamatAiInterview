@@ -88,6 +88,7 @@ export default function DashboardOverview() {
               status: app.status,
               createdAt: new Date(app.createdAt).getTime(),
               reportId: matchingReport ? matchingReport.id : null,
+              interviewId: matchingReport ? matchingReport.interviewId : null,
             });
           });
         });
@@ -259,8 +260,8 @@ export default function DashboardOverview() {
                     </span>
                   </td>
                   <td className="py-3.5">
-                    {cand.reportId ? (
-                      <Link to={`/admin/report/${cand.reportId}`}>
+                    {cand.interviewId ? (
+                      <Link to={`/admin/report/${cand.interviewId}`}>
                         <button className="text-blue-500 hover:text-blue-600 font-bold inline-flex items-center gap-0.5">
                           Details <ChevronRight className="w-3.5 h-3.5" />
                         </button>

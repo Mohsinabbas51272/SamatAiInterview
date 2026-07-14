@@ -246,7 +246,7 @@ export default function ResultsFeedback() {
           <div className="space-y-1 max-w-sm">
             <h4 className="font-bold text-base text-slate-800 dark:text-slate-200">No Assessment Result Available</h4>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Complete your AI simulated assessment first. Once analyzed by the Gemini parser, your full scorecard will render here.
+              Complete your AI simulated assessment first. Once analyzed by the Groq parser, your full scorecard will render here.
             </p>
           </div>
           <Link to="/candidate/schedule">

@@ -39,9 +39,9 @@ export default function AIConfiguration() {
                 {...register('model')}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 focus:outline-none focus:border-blue-500 text-sm"
               >
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro (Analytical/Reasoning)</option>
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Low-Latency)</option>
-                <option value="gemini-2.0-flash">Gemini 2.0 Flash (Advanced Multimodal)</option>
+                <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Recommended / High Quality)</option>
+                <option value="llama-3.1-8b-instant">Llama 3.1 8B (Fast / Low-Latency)</option>
+                <option value="mixtral-8x7b-32768">Mixtral 8x7B (Balanced / MoE)</option>
               </select>
             </div>
 

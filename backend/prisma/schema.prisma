@@ -509,7 +509,7 @@ model Notification {
 
 model SystemConfig {
   id              String   @id @default("default")
-  model           String   @default("gemini-2.0-flash")
+  model           String   @default("llama-3.3-70b-versatile")
   temperature     Float    @default(0.7)
   screeningWeight Int      @default(40)
   interviewWeight Int      @default(60)

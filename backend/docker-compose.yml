@@ -43,7 +43,7 @@ services:
       - JWT_REFRESH_SECRET=your-super-secret-refresh-key
       - JWT_REFRESH_EXPIRES_IN=7d
       - UPLOAD_DEST=./uploads
-      - GEMINI_API_KEY=AIzaSyDsz6I8Ru0Z-XC53tehgjoyifMvXzL6_i8
+      - GROQ_API_KEY=
       - FRONTEND_URL=http://localhost:5173
     depends_on:
       - postgres

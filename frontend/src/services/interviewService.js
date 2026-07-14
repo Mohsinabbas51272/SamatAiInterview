@@ -36,6 +36,11 @@ const interviewService = {
     return response.data;
   },
 
+  // Alias used by InterviewRoom.jsx
+  async startInterview(id) {
+    return this.start(id);
+  },
+
   /**
    * Submit an answer to a question (Candidate)
    * @param {string} interviewId
@@ -53,6 +58,11 @@ const interviewService = {
   async end(id) {
     const response = await api.post(`/interviews/${id}/end`);
     return response.data;
+  },
+
+  // Alias used by InterviewRoom.jsx
+  async endInterview(id) {
+    return this.end(id);
   },
 };
 

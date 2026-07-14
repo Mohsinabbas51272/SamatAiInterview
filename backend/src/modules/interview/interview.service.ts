@@ -272,8 +272,8 @@ export class InterviewService {
     // Check if we already have general questions in DB
     const existingCount = await this.prisma.question.count();
     
-    // Call Gemini API to generate 5 personalized interview questions
-    const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+    // Call Groq API to generate 5 personalized interview questions
+    const apiKey = this.configService.get<string>('GROQ_API_KEY');
     if (!apiKey) {
       // Fallback: return existing or default questions
       if (existingCount > 0) {
@@ -300,24 +300,7 @@ export class InterviewService {
         ]
       `;
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json' },
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error('Gemini API failed');
-      }
-
-      const res = await response.json();
-      const rawText = res.candidates?.[0]?.content?.parts?.[0]?.text;
+      const rawText = await this.callGroqAPI(prompt, true, 1024, 0.7);
       const parsedQuestions = JSON.parse(rawText.trim());
 
       const createdQuestions: any[] = [];
@@ -344,8 +327,57 @@ export class InterviewService {
     }
   }
 
+  private async callGroqAPI(prompt: string, jsonMode = true, maxTokens = 512, customTemp?: number) {
+    const apiKey = this.configService.get<string>('GROQ_API_KEY');
+    if (!apiKey) {
+      throw new Error('GROQ_API_KEY is not configured');
+    }
+
+    const systemConfig = await this.prisma.systemConfig.findUnique({
+      where: { id: 'default' },
+    });
+    const model = systemConfig?.model || 'llama-3.3-70b-versatile';
+    const temp = customTemp ?? (systemConfig?.temperature || 0.7);
+    const systemPrompt = systemConfig?.systemPrompt || 'You are Aria, an AI technical interviewer. Ask candidates technical questions and evaluate their responses constructively.';
+
+    const body: any = {
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: prompt }
+      ],
+      temperature: temp,
+      max_tokens: maxTokens,
+    };
+
+    if (jsonMode) {
+      body.response_format = { type: 'json_object' };
+    }
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`Groq API failed: ${response.status} - ${errorData}`);
+    }
+
+    const res = await response.json();
+    const content = res.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error('Groq returned empty response');
+    }
+    return content;
+  }
+
   private async evaluateAnswerWithAI(questionText: string, expectedAnswer: string, candidateAnswer: string) {
-    const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+    const apiKey = this.configService.get<string>('GROQ_API_KEY');
     if (!apiKey) {
       return { score: 75, feedback: 'Good effort. Your response fits standard expectations.' };
     }
@@ -365,24 +397,7 @@ export class InterviewService {
         }
       `;
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json' },
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error();
-      }
-
-      const res = await response.json();
-      const rawText = res.candidates?.[0]?.content?.parts?.[0]?.text;
+      const rawText = await this.callGroqAPI(prompt, true, 512, 0.4);
       return JSON.parse(rawText.trim());
     } catch (e) {
       return { score: 70, feedback: 'Evaluation completed successfully with standard heuristics.' };
@@ -390,7 +405,7 @@ export class InterviewService {
   }
 
   private async generateFullReportWithAI(interview: any, answers: any[], avgScore: number) {
-    const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+    const apiKey = this.configService.get<string>('GROQ_API_KEY');
     if (!apiKey) {
       return {
         strengths: ['Technical knowledge', 'Core problem-solving'],
@@ -422,24 +437,7 @@ export class InterviewService {
         }
       `;
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json' },
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error();
-      }
-
-      const res = await response.json();
-      const rawText = res.candidates?.[0]?.content?.parts?.[0]?.text;
+      const rawText = await this.callGroqAPI(prompt, true, 1024, 0.4);
       return JSON.parse(rawText.trim());
     } catch (e) {
       return {

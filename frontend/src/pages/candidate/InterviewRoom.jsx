@@ -95,8 +95,11 @@ export default function InterviewRoom() {
 
   // Handle Webcam Permission and Stream
   useEffect(() => {
+    let activeStream = null;
+
     navigator.mediaDevices.getUserMedia({ video: true, audio: false })
       .then((stream) => {
+        activeStream = stream;
         setCameraStream(stream);
         setWebcamActive(true);
         if (videoRef.current) {
@@ -109,8 +112,8 @@ export default function InterviewRoom() {
       });
 
     return () => {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach((track) => track.stop());
+      if (activeStream) {
+        activeStream.getTracks().forEach((track) => track.stop());
       }
     };
   }, []);

@@ -23,6 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 
+.env
+backend/.env
+frontend/.env
+
 # Generated Prisma schema copy for Vercel
 api/schema.prisma
 
